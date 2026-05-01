@@ -8,6 +8,7 @@ import pytest
 from docfiller.extractor import extract_functions, FunctionInfo
 from docfiller.generator import _clean_docstring, _build_prompt
 from docfiller.filler import _indent_docstring, fill_file
+from docfiller.cli import main
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +145,57 @@ class TestBuildPrompt:
         funcs = extract_functions("def foo(x): return x")
         prompt = _build_prompt(funcs[0])
         assert "Google" in prompt
+
+
+# ---------------------------------------------------------------------------
+# CLI scan tests
+# ---------------------------------------------------------------------------
+
+class TestScanCheck:
+    def test_check_passes_when_all_documented(self, capsys):
+        src = 'def foo():\n    """Return nothing."""\n    return None\n'
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            main(["scan", path, "--check"])
+            captured = capsys.readouterr()
+            assert "PASS" in captured.out
+            assert captured.err == ""
+        finally:
+            os.unlink(path)
+
+    def test_check_fails_when_undocumented(self, capsys):
+        src = "def foo():\n    return None\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with pytest.raises(SystemExit) as excinfo:
+                main(["scan", path, "--check"])
+            captured = capsys.readouterr()
+            assert excinfo.value.code == 1
+            assert "foo" in captured.out
+            assert "FAIL: 1 undocumented function(s) found" in captured.err
+        finally:
+            os.unlink(path)
+
+    def test_scan_without_check_unchanged(self, capsys):
+        src = "def foo():\n    return None\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            main(["scan", path])
+            captured = capsys.readouterr()
+            assert "1 undocumented function(s)" in captured.out
+            assert "foo" in captured.out
+            assert captured.err == ""
+        finally:
+            os.unlink(path)
 
 
 # ---------------------------------------------------------------------------
