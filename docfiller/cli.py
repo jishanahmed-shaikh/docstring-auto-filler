@@ -58,6 +58,8 @@ def main(argv=None) -> None:
     scan.add_argument("file", help="Python file to scan")
     scan.add_argument("--skip-private", action="store_true",
                       help="Skip functions whose names start with _")
+    scan.add_argument("--check", action="store_true",
+                      help="Exit with status 1 if any undocumented functions are found (CI mode)")
 
     parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {__version__}")
 
@@ -68,12 +70,18 @@ def main(argv=None) -> None:
         source = Path(args.file).read_text(encoding="utf-8")
         funcs  = extract_functions(source, skip_private=args.skip_private, skip_documented=True)
         if not funcs:
-            print(f"  All functions in {args.file} are documented.")
+            if args.check:
+                print(f"  PASS: all functions in {args.file} are documented.")
+            else:
+                print(f"  All functions in {args.file} are documented.")
             return
         print(f"\n  {len(funcs)} undocumented function(s) in {args.file}:\n")
         for f in funcs:
             print(f"  Line {f.lineno:<5} {f.qualname}")
         print()
+        if args.check:
+            print(f"FAIL: {len(funcs)} undocumented function(s) found", file=sys.stderr)
+            sys.exit(1)
         return
 
     if args.command == "fill":
