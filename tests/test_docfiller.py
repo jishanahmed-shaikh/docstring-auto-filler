@@ -1,0 +1,220 @@
+"""Tests for docstring-auto-filler."""
+
+import os
+import tempfile
+
+import pytest
+
+from docfiller.extractor import extract_functions, FunctionInfo
+from docfiller.generator import _clean_docstring, _build_prompt
+from docfiller.filler import _indent_docstring, fill_file
+
+
+# ---------------------------------------------------------------------------
+# Sample source fixtures
+# ---------------------------------------------------------------------------
+
+UNDOCUMENTED = '''\
+def add(x, y):
+    return x + y
+
+def greet(name: str) -> str:
+    return f"Hello, {name}"
+
+class MyClass:
+    def method(self, value: int) -> None:
+        self.value = value
+
+    def _private(self):
+        pass
+'''
+
+DOCUMENTED = '''\
+def add(x, y):
+    """Add two numbers."""
+    return x + y
+'''
+
+MIXED = '''\
+def documented(x):
+    """Already has a docstring."""
+    return x
+
+def undocumented(y):
+    return y * 2
+'''
+
+
+# ---------------------------------------------------------------------------
+# Extractor tests
+# ---------------------------------------------------------------------------
+
+class TestExtractFunctions:
+    def test_finds_undocumented(self):
+        funcs = extract_functions(UNDOCUMENTED)
+        names = [f.name for f in funcs]
+        assert "add" in names
+        assert "greet" in names
+
+    def test_skips_documented(self):
+        funcs = extract_functions(DOCUMENTED, skip_documented=True)
+        assert funcs == []
+
+    def test_mixed_only_undocumented(self):
+        funcs = extract_functions(MIXED, skip_documented=True)
+        assert len(funcs) == 1
+        assert funcs[0].name == "undocumented"
+
+    def test_finds_class_methods(self):
+        funcs = extract_functions(UNDOCUMENTED)
+        qualnames = [f.qualname for f in funcs]
+        assert "MyClass.method" in qualnames
+
+    def test_skip_private(self):
+        funcs = extract_functions(UNDOCUMENTED, skip_private=True)
+        names = [f.name for f in funcs]
+        assert "_private" not in names
+
+    def test_include_private_by_default(self):
+        funcs = extract_functions(UNDOCUMENTED, skip_private=False)
+        names = [f.name for f in funcs]
+        assert "_private" in names
+
+    def test_args_extracted(self):
+        funcs = extract_functions(UNDOCUMENTED)
+        add_func = next(f for f in funcs if f.name == "add")
+        assert "x" in add_func.args
+        assert "y" in add_func.args
+
+    def test_self_excluded_from_args(self):
+        funcs = extract_functions(UNDOCUMENTED)
+        method = next(f for f in funcs if f.name == "method")
+        assert "self" not in method.args
+        assert "value" in method.args
+
+    def test_return_annotation(self):
+        funcs = extract_functions(UNDOCUMENTED)
+        greet = next(f for f in funcs if f.name == "greet")
+        assert greet.return_annotation == "str"
+
+    def test_lineno_set(self):
+        funcs = extract_functions(UNDOCUMENTED)
+        add_func = next(f for f in funcs if f.name == "add")
+        assert add_func.lineno == 1
+
+    def test_syntax_error_returns_empty(self):
+        funcs = extract_functions("def broken(:")
+        assert funcs == []
+
+    def test_empty_source(self):
+        funcs = extract_functions("")
+        assert funcs == []
+
+
+# ---------------------------------------------------------------------------
+# Generator helper tests (no LLM calls)
+# ---------------------------------------------------------------------------
+
+class TestCleanDocstring:
+    def test_strips_triple_quotes(self):
+        raw = '"""This is a docstring."""'
+        assert _clean_docstring(raw) == "This is a docstring."
+
+    def test_strips_single_triple_quotes(self):
+        raw = "'''This is a docstring.'''"
+        assert _clean_docstring(raw) == "This is a docstring."
+
+    def test_no_quotes_unchanged(self):
+        raw = "This is a docstring."
+        assert _clean_docstring(raw) == "This is a docstring."
+
+    def test_strips_whitespace(self):
+        raw = "  \n  Some text.  \n  "
+        assert _clean_docstring(raw) == "Some text."
+
+
+class TestBuildPrompt:
+    def test_prompt_contains_source(self):
+        funcs = extract_functions("def foo(x): return x")
+        assert funcs
+        prompt = _build_prompt(funcs[0])
+        assert "def foo" in prompt
+
+    def test_prompt_mentions_google_style(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0])
+        assert "Google" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Filler tests (no LLM — uses a mock generator)
+# ---------------------------------------------------------------------------
+
+class TestIndentDocstring:
+    def test_single_line(self):
+        result = _indent_docstring("Add two numbers.", col_offset=0)
+        assert '"""Add two numbers."""' in result
+
+    def test_indented(self):
+        result = _indent_docstring("Do something.", col_offset=4)
+        assert result.startswith("        ")
+
+    def test_multiline(self):
+        body = "Summary line.\n\nArgs:\n    x: A number."
+        result = _indent_docstring(body, col_offset=0)
+        assert '"""Summary line.' in result
+        assert '"""' in result
+
+
+class TestFillFile:
+    def test_fills_undocumented_with_mock(self):
+        """Test fill_file using a mock generator that returns a fixed docstring."""
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="Return x unchanged."):
+                result = fill_file(path, adapter="ollama")
+            assert result["filled"] == 1
+            assert result["errors"] == []
+            content = open(path).read()
+            assert "Return x unchanged." in content
+        finally:
+            os.unlink(path)
+
+    def test_dry_run_does_not_modify_file(self):
+        from unittest.mock import patch
+
+        src = "def bar(y):\n    return y\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="Return y."):
+                result = fill_file(path, dry_run=True)
+            assert result["filled"] == 1
+            content = open(path).read()
+            assert "Return y." not in content  # file unchanged
+        finally:
+            os.unlink(path)
+
+    def test_already_documented_not_filled(self):
+        from unittest.mock import patch
+
+        src = 'def baz():\n    """Already documented."""\n    pass\n'
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring") as mock_gen:
+                result = fill_file(path)
+            mock_gen.assert_not_called()
+            assert result["filled"] == 0
+        finally:
+            os.unlink(path)
