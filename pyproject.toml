@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docstring-auto-filler"
+version = "1.0.0"
+description = "Use AI to read Python functions and automatically write Google-style docstrings"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Jishanahmed AR Shaikh", email = "jishanahmedshaikh@gmail.com" }]
+keywords = ["docstring", "documentation", "ai", "ollama", "openai", "python", "ast"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Documentation",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+docfiller = "docfiller.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jishanahmed-shaikh/docstring-auto-filler"
+Issues   = "https://github.com/jishanahmed-shaikh/docstring-auto-filler/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-v --tb=short"
