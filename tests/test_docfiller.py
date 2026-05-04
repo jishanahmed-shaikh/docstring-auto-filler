@@ -270,3 +270,143 @@ class TestFillFile:
             assert result["filled"] == 0
         finally:
             os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# --format / fmt tests
+# ---------------------------------------------------------------------------
+
+class TestBuildPromptFormat:
+    def test_default_fmt_is_google(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0])
+        assert "Google" in prompt
+
+    def test_google_fmt_prompt_contains_google(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0], fmt="google")
+        assert "Google" in prompt
+
+    def test_google_fmt_prompt_excludes_numpy(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0], fmt="google")
+        assert "NumPy" not in prompt
+
+    def test_numpy_fmt_prompt_contains_numpy(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0], fmt="numpy")
+        assert "NumPy" in prompt
+
+    def test_numpy_fmt_prompt_excludes_google(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0], fmt="numpy")
+        assert "Google" not in prompt
+
+    def test_numpy_prompt_has_underline_convention(self):
+        funcs = extract_functions("def foo(x): return x")
+        prompt = _build_prompt(funcs[0], fmt="numpy")
+        assert "----------" in prompt
+
+
+class TestFillFileFmt:
+    def test_fmt_google_forwarded_to_generate(self):
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="Return x.") as mock_gen:
+                fill_file(path, fmt="google")
+            _, kwargs = mock_gen.call_args
+            assert kwargs["fmt"] == "google"
+        finally:
+            os.unlink(path)
+
+    def test_fmt_numpy_forwarded_to_generate(self):
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="Return x.") as mock_gen:
+                fill_file(path, fmt="numpy")
+            _, kwargs = mock_gen.call_args
+            assert kwargs["fmt"] == "numpy"
+        finally:
+            os.unlink(path)
+
+    def test_fmt_default_is_google(self):
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="Return x.") as mock_gen:
+                fill_file(path)
+            _, kwargs = mock_gen.call_args
+            assert kwargs["fmt"] == "google"
+        finally:
+            os.unlink(path)
+
+
+class TestCLIFormatFlag:
+    def test_default_format_is_google(self):
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="x.") as mock_gen:
+                main(["fill", path, "--quiet"])
+            _, kwargs = mock_gen.call_args
+            assert kwargs["fmt"] == "google"
+        finally:
+            os.unlink(path)
+
+    def test_format_numpy_passed_through(self):
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="x.") as mock_gen:
+                main(["fill", path, "--format", "numpy", "--quiet"])
+            _, kwargs = mock_gen.call_args
+            assert kwargs["fmt"] == "numpy"
+        finally:
+            os.unlink(path)
+
+    def test_invalid_format_exits(self):
+        with pytest.raises(SystemExit):
+            main(["fill", "dummy.py", "--format", "sphinx"])
+
+    def test_format_google_explicit(self):
+        from unittest.mock import patch
+
+        src = "def foo(x):\n    return x\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(src)
+            path = f.name
+
+        try:
+            with patch("docfiller.filler.generate_docstring", return_value="x.") as mock_gen:
+                main(["fill", path, "--format", "google", "--quiet"])
+            _, kwargs = mock_gen.call_args
+            assert kwargs["fmt"] == "google"
+        finally:
+            os.unlink(path)

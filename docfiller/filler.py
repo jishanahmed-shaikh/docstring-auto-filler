@@ -47,7 +47,6 @@ def _indent_docstring(docstring_body: str, col_offset: int) -> str:
     result.append(f'{indent}"""')
     return "\n".join(result) + "\n"
 
-
 def fill_file(
     path: str,
     adapter: str = "ollama",
@@ -59,11 +58,12 @@ def fill_file(
     skip_private: bool = False,
     dry_run: bool = False,
     on_progress: Optional[Callable[[str, int, int], None]] = None,
+    fmt: str = "google",
 ) -> Dict:
     """Fill missing docstrings in a Python file.
 
-    Reads *path*, finds all undocumented functions, generates Google-style
-    docstrings for each, and writes the updated source.
+    Reads *path*, finds all undocumented functions, generates docstrings
+    in the requested style, and writes the updated source.
 
     Parameters
     ----------
@@ -116,6 +116,7 @@ def fill_file(
                 base_url=base_url,
                 api_key=api_key,
                 timeout=timeout,
+                fmt=fmt,
             )
         except Exception as exc:
             result["errors"].append(f"{func.qualname}: {exc}")

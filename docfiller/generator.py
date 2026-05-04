@@ -1,5 +1,5 @@
 """
-Docstring generator — calls an LLM to write Google-style docstrings.
+Docstring generator — calls an LLM to write Google-style or NumPy-style docstrings.
 
 Supports Ollama (local, free) and any OpenAI-compatible REST API.
 Uses only ``urllib`` from the standard library.
@@ -31,9 +31,41 @@ Function:
 {source}
 """
 
+NUMPY_PROMPT_TEMPLATE = """\
+You are an expert Python developer. Write a NumPy-style docstring for the following Python function.
 
-def _build_prompt(func: FunctionInfo) -> str:
-    return _PROMPT_TEMPLATE.format(source=func.source.strip())
+Rules:
+- Output ONLY the docstring content between triple quotes — no ```python, no def line, no extra text
+- Start with a one-line summary sentence
+- Add Parameters section if there are parameters (skip self/cls), with the header underlined by dashes
+- Add Returns section if the function returns something, with the header underlined by dashes
+- Add Raises section only if the function clearly raises exceptions, with the header underlined by dashes
+- Keep it concise and accurate
+- Do NOT include the triple quotes themselves in your output
+
+Example format:
+Summary line here.
+
+Parameters
+----------
+x : int
+    Description of x.
+y : int
+    Description of y.
+
+Returns
+-------
+int
+    Description of return value.
+
+Function:
+{source}
+"""
+
+
+def _build_prompt(func: FunctionInfo, fmt: str = "google") -> str:
+    template = NUMPY_PROMPT_TEMPLATE if fmt == "numpy" else _PROMPT_TEMPLATE
+    return template.format(source=func.source.strip())
 
 
 def _call_ollama(prompt: str, model: str, base_url: str, timeout: int) -> str:
@@ -97,23 +129,26 @@ def generate_docstring(
     base_url: str = "http://localhost:11434",
     api_key: str = "",
     timeout: int = 60,
+    fmt: str = "google",
 ) -> str:
-    """Generate a Google-style docstring for *func* using an LLM.
+    """Generate a docstring for *func* using an LLM.
 
     Parameters
     ----------
-    func:
+    func : FunctionInfo
         The :class:`~docfiller.extractor.FunctionInfo` to document.
-    adapter:
+    adapter : str
         LLM backend: ``"ollama"`` or ``"openai"``.
-    model:
+    model : str
         Model name (e.g. ``"llama3"`` or ``"gpt-4o-mini"``).
-    base_url:
+    base_url : str
         API base URL.
-    api_key:
+    api_key : str
         API key (required for ``"openai"`` adapter).
-    timeout:
+    timeout : int
         Request timeout in seconds.
+    fmt : str
+        Docstring style: ``"google"`` (default) or ``"numpy"``.
 
     Returns
     -------
@@ -127,7 +162,7 @@ def generate_docstring(
     RuntimeError
         If the API returns an error response.
     """
-    prompt = _build_prompt(func)
+    prompt = _build_prompt(func, fmt=fmt)
 
     if adapter == "ollama":
         raw = _call_ollama(prompt, model=model, base_url=base_url, timeout=timeout)
