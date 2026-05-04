@@ -50,8 +50,16 @@ def main(argv=None) -> None:
                       help="Skip functions whose names start with _")
     fill.add_argument("--dry-run", action="store_true",
                       help="Print generated docstrings without modifying files")
+    
     fill.add_argument("--quiet", "-q", action="store_true",
                       help="Suppress progress output")
+    fill.add_argument(
+        "--format",
+        dest="fmt",
+        choices=["google", "numpy"],
+        default="google",
+        help="Docstring style: 'google' (default) or 'numpy'.",
+    )
 
     # scan command
     scan = sub.add_parser("scan", help="List undocumented functions without generating docstrings")
@@ -98,7 +106,6 @@ def main(argv=None) -> None:
         if args.dry_run:
             print(f"  {_YELLOW if use_color else ''}DRY RUN — no files will be modified{r}", file=sys.stderr)
         print(file=sys.stderr)
-
         result = fill_file(
             args.file,
             adapter=args.adapter,
@@ -110,6 +117,7 @@ def main(argv=None) -> None:
             skip_private=args.skip_private,
             dry_run=args.dry_run,
             on_progress=_progress if not args.quiet else None,
+            fmt=args.fmt,
         )
 
         if not args.quiet:
